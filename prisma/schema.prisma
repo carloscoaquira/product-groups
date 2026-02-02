@@ -32,3 +32,19 @@ model Session {
   refreshToken        String?
   refreshTokenExpires DateTime?
 }
+model ProductGroup {
+  id            String      @id @default(cuid())
+  shop          String
+  title         String
+  createdAt     DateTime @default(now())
+  products      ProductGroupItem[]
+}
+model ProductGroupItem {
+  id            String   @id @default(cuid())
+  groupId       String
+  group         ProductGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  handle        String
+  title         String
+  createdAt     DateTime @default(now())
+  @@index([groupId])
+}
