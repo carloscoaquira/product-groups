@@ -1,14 +1,31 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router";
+import { authenticate } from "../shopify.server";
+import { createProductGroup } from "../models/ProductGroup.server";
+import { useFetcher } from "react-router";
+import type { ActionFunctionArgs } from "react-router";
+
+export async function action({ request }: ActionFunctionArgs) {
+  const { session } = await authenticate.admin(request);
+
+  const formData = await request.formData();
+  const title = formData.get("title") as string;
+  const products = JSON.parse(formData.get("products") as string);
+
+  await createProductGroup(session.shop, title);
+
+  return null;
+}
 
 export default function ProductGroupPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-
+  const fetcher = useFetcher();
   const [title, setTitle] = useState("");
   const [selectedProducts, setSelectedProducts] = useState<
     Array<{ id: string; title: string; handle: string }>
   >([]);
+
   const handleSelectProducts = async () => {
     const selected = await shopify.resourcePicker({
       type: 'product',
@@ -20,9 +37,18 @@ export default function ProductGroupPage() {
       handle: p.handle,
     }));
     setSelectedProducts(products);
-
+  };
+  const handleSaveGroup = () => {
+    fetcher.submit(
+      {
+        title,
+        products: JSON.stringify(selectedProducts),
+      },
+      { method: "post" }
+    );
     console.log('Selected products', products, selectedProducts);
   };
+
   return (
     <s-page heading="New product group">
       <s-section>
@@ -39,7 +65,8 @@ export default function ProductGroupPage() {
         </s-stack>
       </s-section>
       {selectedProducts.length > 0 && (
-        <s-section padding="none">
+        <s-section>
+          <s-section padding="none">
             <s-table>
                 <s-table-header-row>
                     <s-table-header>Name</s-table-header>
@@ -54,6 +81,13 @@ export default function ProductGroupPage() {
                     ))}
                 </s-table-body>
             </s-table>
+          </s-section>
+          <s-grid gap="small-200" gridTemplateColumns="1fr auto">
+            <s-button-group>
+              <s-button slot="primary-action">Save</s-button>
+              <s-button slot="secondary-actions" onClick={handleSaveGroup}>Cancel</s-button>
+            </s-button-group>
+          </s-grid>
         </s-section>
       )}
     </s-page>

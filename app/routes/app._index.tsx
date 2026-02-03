@@ -8,191 +8,94 @@ import { useFetcher } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
+import { getProductGroups } from "../models/ProductGroup.server";
+import { useLoaderData } from "react-router";
 
-export const loader = async ({ request }: LoaderFunctionArgs) => {
-  await authenticate.admin(request);
+export async function loader({ request }) {
+  const { session } = await authenticate.admin(request);
 
-  return null;
-};
+  const groups = await getProductGroups(session.shop);
 
-export const action = async ({ request }: ActionFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
-  const color = ["Red", "Orange", "Yellow", "Green"][
-    Math.floor(Math.random() * 4)
-  ];
-  const response = await admin.graphql(
-    `#graphql
-      mutation populateProduct($product: ProductCreateInput!) {
-        productCreate(product: $product) {
-          product {
-            id
-            title
-            handle
-            status
-            variants(first: 10) {
-              edges {
-                node {
-                  id
-                  price
-                  barcode
-                  createdAt
-                }
-              }
-            }
-          }
-        }
-      }`,
-    {
-      variables: {
-        product: {
-          title: `${color} Snowboard`,
-        },
-      },
-    },
-  );
-  const responseJson = await response.json();
+  return { groups };
+}
 
-  const product = responseJson.data!.productCreate!.product!;
-  const variantId = product.variants.edges[0]!.node!.id!;
+const EmptyProductGroupState = () => (
+  <s-section accessibilityLabel="Empty product groups">
+    <s-grid gap="base" justifyItems="center" paddingBlock="large-400">
+      <s-box maxInlineSize="200px" maxBlockSize="200px">
+        <s-image
+          aspectRatio="1/0.5"
+          src="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+          alt="Empty state"
+        />
+      </s-box>
 
-  const variantResponse = await admin.graphql(
-    `#graphql
-    mutation shopifyReactRouterTemplateUpdateVariant($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-      productVariantsBulkUpdate(productId: $productId, variants: $variants) {
-        productVariants {
-          id
-          price
-          barcode
-          createdAt
-        }
-      }
-    }`,
-    {
-      variables: {
-        productId: product.id,
-        variants: [{ id: variantId, price: "100.00" }],
-      },
-    },
-  );
+      <s-grid justifyItems="center" maxInlineSize="450px">
+        <s-heading>Create product groups</s-heading>
+        <s-paragraph>
+          Group products together to reuse them across your app.
+        </s-paragraph>
 
-  const variantResponseJson = await variantResponse.json();
+        <s-stack direction="inline" gap="small-200">
+          <s-button href="/app/productgroups/new" variant="primary">
+            Create group
+          </s-button>
+        </s-stack>
+      </s-grid>
+    </s-grid>
+  </s-section>
+);
 
-  return {
-    product: responseJson!.data!.productCreate!.product,
-    variant:
-      variantResponseJson!.data!.productVariantsBulkUpdate!.productVariants,
-  };
-};
+const ProductGroupTable = ({ groups }) => (
+  <s-section padding="none" accessibilityLabel="Product groups table">
+    <s-table>
+      <s-table-header-row>
+        <s-table-header listSlot="primary">Title</s-table-header>
+        <s-table-header>Date created</s-table-header>
+      </s-table-header-row>
+
+      <s-table-body>
+        {groups.map((group) => (
+          <ProductGroupRow key={group.id} group={group} />
+        ))}
+      </s-table-body>
+    </s-table>
+  </s-section>
+);
+
+const ProductGroupRow = ({ group }) => (
+  <s-table-row id={group.id} position={group.id}>
+    <s-table-cell>
+      <s-link href={`/app/productgroups/${group.id}`}>
+        {group.title}
+      </s-link>
+    </s-table-cell>
+
+    <s-table-cell>
+      {new Date(group.createdAt).toDateString()}
+    </s-table-cell>
+  </s-table-row>
+);
 
 export default function Index() {
-  const fetcher = useFetcher<typeof action>();
-
-  const shopify = useAppBridge();
-  const isLoading =
-    ["loading", "submitting"].includes(fetcher.state) &&
-    fetcher.formMethod === "POST";
-
-  useEffect(() => {
-    if (fetcher.data?.product?.id) {
-      shopify.toast.show("Product created");
-    }
-  }, [fetcher.data?.product?.id, shopify]);
-
-  const generateProduct = () => fetcher.submit({}, { method: "POST" });
+  const { groups } = useLoaderData();
 
   return (
     <s-page heading="Product groups">
-      <s-button slot="primary-action" href="/app/productgroups/new">
-        Create groups
-      </s-button>
+      <s-link slot="secondary-actions" href="/app/productgroups/new">
+        Create group
+      </s-link>
 
-      <s-section heading="Congrats on creating a new Shopify app 🎉">
-        <s-paragraph>
-          This embedded app template uses{" "}
-          <s-link
-            href="https://shopify.dev/docs/apps/tools/app-bridge"
-            target="_blank"
-          >
-            App Bridge
-          </s-link>{" "}
-          interface examples like an{" "}
-          <s-link href="/app/additional">additional page in the app nav</s-link>
-          , as well as an{" "}
-          <s-link
-            href="https://shopify.dev/docs/api/admin-graphql"
-            target="_blank"
-          >
-            Admin GraphQL
-          </s-link>{" "}
-          mutation demo, to provide a starting point for app development.
-        </s-paragraph>
-      </s-section>
-      <s-section heading="Get started with products">
-        <s-paragraph>
-          Generate a product with GraphQL and get the JSON output for that
-          product. Learn more about the{" "}
-          <s-link
-            href="https://shopify.dev/docs/api/admin-graphql/latest/mutations/productCreate"
-            target="_blank"
-          >
-            productCreate
-          </s-link>{" "}
-          mutation in our API references.
-        </s-paragraph>
-        <s-stack direction="inline" gap="base">
-          <s-button
-            onClick={generateProduct}
-            {...(isLoading ? { loading: true } : {})}
-          >
-            Generate a product
-          </s-button>
-          {fetcher.data?.product && (
-            <s-button
-              onClick={() => {
-                shopify.intents.invoke?.("edit:shopify/Product", {
-                  value: fetcher.data?.product?.id,
-                });
-              }}
-              target="_blank"
-              variant="tertiary"
-            >
-              Edit product
-            </s-button>
-          )}
-        </s-stack>
-        {fetcher.data?.product && (
-          <s-section heading="productCreate mutation">
-            <s-stack direction="block" gap="base">
-              <s-box
-                padding="base"
-                borderWidth="base"
-                borderRadius="base"
-                background="subdued"
-              >
-                <pre style={{ margin: 0 }}>
-                  <code>{JSON.stringify(fetcher.data.product, null, 2)}</code>
-                </pre>
-              </s-box>
-
-              <s-heading>productVariantsBulkUpdate mutation</s-heading>
-              <s-box
-                padding="base"
-                borderWidth="base"
-                borderRadius="base"
-                background="subdued"
-              >
-                <pre style={{ margin: 0 }}>
-                  <code>{JSON.stringify(fetcher.data.variant, null, 2)}</code>
-                </pre>
-              </s-box>
-            </s-stack>
-          </s-section>
-        )}
-      </s-section>
+      {groups.length === 0 ? (
+        <EmptyProductGroupState />
+      ) : (
+        <ProductGroupTable groups={groups} />
+      )}
     </s-page>
   );
 }
 
-export const headers: HeadersFunction = (headersArgs) => {
+export const headers = (headersArgs) => {
   return boundary.headers(headersArgs);
 };
+
