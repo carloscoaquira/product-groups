@@ -1,25 +1,89 @@
-import { useState } from "react";
-import { useParams, useNavigate, useFetcher } from "react-router";
-import type { ActionFunctionArgs } from "react-router";
+import { useState, useEffect } from "react";
+import {
+  useLoaderData,
+  useParams,
+  useFetcher,
+} from "react-router";
+import type {
+  LoaderFunctionArgs,
+  ActionFunctionArgs,
+} from "react-router";
+import { redirect } from "react-router";
 import { authenticate } from "../shopify.server";
-import { saveProductGroup } from "../models/ProductGroup.server";
+import {
+  saveProductGroup,
+  getProductGroupById,
+  deleteProductGroup,
+  updateProductGroup,
+} from "../models/ProductGroup.server";
+import { boundary } from "@shopify/shopify-app-react-router/server";
+
+/* =========================
+   LOADER
+========================= */
+
+export async function loader({ request, params }: LoaderFunctionArgs) {
+  const { session } = await authenticate.admin(request);
+  const { shop } = session;
+
+  if (params.id === "new") {
+    return {
+      id: null,
+      title: "",
+      products: [],
+    };
+  }
+
+  const group = await getProductGroupById(shop, params.id!);
+
+  if (!group) {
+    throw new Response("Not Found", { status: 404 });
+  }
+
+  return group;
+}
 
 /* =========================
    ACTION
 ========================= */
 
-export async function action({ request }: ActionFunctionArgs) {
+export async function action({ request, params }: ActionFunctionArgs) {
   const { session } = await authenticate.admin(request);
 
+  /* -------- DELETE -------- */
+  if (request.method === "DELETE") {
+    const formData = await request.formData();
+    const groupId = formData.get("groupId") as string;
+
+    await deleteProductGroup(session.shop, groupId);
+
+    return redirect("/app");
+  }
+
+  /* -------- CREATE / UPDATE -------- */
   const formData = await request.formData();
   const title = formData.get("title") as string;
   const products = JSON.parse(formData.get("products") as string);
 
+  // UPDATE
+  if (params.id && params.id !== "new") {
+    return updateProductGroup(params.id, {
+      shop: session.shop,
+      title,
+      products,
+    });
+  }
+
+  // CREATE
   const result = await saveProductGroup({
     shop: session.shop,
     title,
     products,
   });
+
+  if (result.success) {
+    return redirect(`/app/productgroups/${result.group!.id}`);
+  }
 
   return result;
 }
@@ -28,17 +92,47 @@ export async function action({ request }: ActionFunctionArgs) {
    PAGE
 ========================= */
 
+type LoaderData = {
+  id: string | null;
+  title: string;
+  products: Array<{
+    title: string;
+    handle: string;
+  }>;
+};
+
 export default function ProductGroupPage() {
   const { id } = useParams();
-  const navigate = useNavigate();
   const fetcher = useFetcher();
+
+  const group = useLoaderData<LoaderData>();
 
   const [title, setTitle] = useState("");
   const [selectedProducts, setSelectedProducts] = useState<
-    Array<{ id: string; title: string; handle: string }>
+    Array<{ title: string; handle: string }>
   >([]);
 
-  const handleSubmit = (event) => {
+  /* =========================
+     HYDRATE STATE (EDIT MODE)
+  ========================= */
+
+  useEffect(() => {
+    if (!group) return;
+
+    setTitle(group.title || "");
+    setSelectedProducts(
+      group.products?.map((p) => ({
+        title: p.title,
+        handle: p.handle,
+      })) || []
+    );
+  }, [group]);
+
+  /* =========================
+     HANDLERS
+  ========================= */
+
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     fetcher.submit(
@@ -51,9 +145,7 @@ export default function ProductGroupPage() {
           }))
         ),
       },
-      {
-        method: "post",
-      }
+      { method: "post" }
     );
   };
 
@@ -63,6 +155,8 @@ export default function ProductGroupPage() {
       multiple: true,
     });
 
+    if (!selected) return;
+
     const products = selected.map((p: any) => ({
       handle: p.handle,
       title: p.title,
@@ -71,15 +165,30 @@ export default function ProductGroupPage() {
     setSelectedProducts(products);
   };
 
+  const removeGroup = () => {
+    if (!id || id === "new") return;
+
+    fetcher.submit(
+      { groupId: id },
+      { method: "delete" }
+    );
+  };
+
+  /* =========================
+     RENDER
+  ========================= */
+
   return (
-    <s-page heading="New product group">
-      <form onSubmit={handleSubmit} data-save-bar>
+    <form onSubmit={handleSubmit} data-save-bar>
+      <s-page
+        heading={id === "new" ? "New product group" : "Edit product group"}
+      >
         <s-section>
           <s-text-field
             label="Group title:"
-            name="title"
             required
             placeholder="Product Colors"
+            value={title}
             onChange={(e) => setTitle(e.currentTarget.value)}
           />
 
@@ -91,34 +200,55 @@ export default function ProductGroupPage() {
           </s-stack>
 
           <s-stack paddingBlockStart="large">
-            <s-button variant="primary" type="submit">
-              Save product
+            <s-button
+              variant="primary"
+              type="submit"
+              loading={fetcher.state === "submitting"}
+            >
+              Save product group
             </s-button>
           </s-stack>
+
+          {selectedProducts.length > 0 && (
+            <s-stack paddingBlockStart="large" border="small-500">
+              <s-table>
+                <s-table-header-row>
+                  <s-table-header>Name</s-table-header>
+                  <s-table-header>Handle</s-table-header>
+                </s-table-header-row>
+                <s-table-body>
+                  {selectedProducts.map((p) => (
+                    <s-table-row key={p.handle}>
+                      <s-table-cell>{p.title}</s-table-cell>
+                      <s-table-cell>{p.handle}</s-table-cell>
+                    </s-table-row>
+                  ))}
+                </s-table-body>
+              </s-table>
+            </s-stack>
+          )}
         </s-section>
 
-        <s-divider />
-      </form>
-
-      {selectedProducts.length > 0 && (
-        <s-section padding="none">
-          <s-table>
-            <s-table-header-row>
-              <s-table-header>Name</s-table-header>
-              <s-table-header>Handle</s-table-header>
-            </s-table-header-row>
-
-            <s-table-body>
-              {selectedProducts.map((p) => (
-                <s-table-row key={p.handle}>
-                  <s-table-cell>{p.title}</s-table-cell>
-                  <s-table-cell>{p.handle}</s-table-cell>
-                </s-table-row>
-              ))}
-            </s-table-body>
-          </s-table>
-        </s-section>
-      )}
-    </s-page>
+        {id !== "new" && (
+          <s-section>
+            <s-button
+              tone="critical"
+              onClick={removeGroup}
+              loading={fetcher.state === "submitting"}
+            >
+              Delete
+            </s-button>
+          </s-section>
+        )}
+      </s-page>
+    </form>
   );
 }
+
+/* =========================
+   HEADERS (SHOPIFY)
+========================= */
+
+export const headers = (headersArgs: any) => {
+  return boundary.headers(headersArgs);
+};

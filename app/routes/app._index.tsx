@@ -9,7 +9,7 @@ import { useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { getProductGroups } from "../models/ProductGroup.server";
-import { useLoaderData } from "react-router";
+import { useLoaderData, Link } from "react-router";
 
 export async function loader({ request }) {
   const { session } = await authenticate.admin(request);
