@@ -1,118 +1,124 @@
-import invariant from "tiny-invariant";
 import db from "../db.server";
 
 /* =========================
-   PRODUCT GROUPS
+   TYPES
 ========================= */
 
-/**
- * Obtener un grupo por ID y shop
- */
-export async function getProductGroup(id: string, shop: string) {
-  return db.productGroup.findFirst({
-    where: {
-      id,
-      shop,
-    },
-    include: {
-      products: true, // relación products
-    },
-  });
-}
+export type GroupProductInput = {
+  handle: string;
+  title: string;
+};
+
+export type ProductGroupInput = {
+  shop: string;
+  title: string;
+  products: GroupProductInput[];
+};
+
+/* =========================
+   QUERIES
+========================= */
 
 /**
  * Obtener todos los grupos de un shop
+ * Devuelve [] si no existen
  */
 export async function getProductGroups(shop: string) {
-  return db.productGroup.findMany({
+  const groups = await db.productGroup.findMany({
     where: { shop },
-    include: {
-      products: true,
-    },
+    include: { products: true },
     orderBy: { createdAt: "desc" },
   });
-}
 
-/**
- * Crear un nuevo grupo de productos
- */
-export async function createProductGroup(
-  shop: string,
-  title: string
-) {
-  invariant(shop, "Shop is required");
-  invariant(title, "Title is required");
+  if (groups.length === 0) {
+    return [];
+  }
 
-  return db.productGroup.create({
-    data: {
-      shop,
-      title,
-    },
-  });
-}
-
-/**
- * Eliminar un grupo de productos
- */
-export async function deleteProductGroup(id: string, shop: string) {
-  return db.productGroup.deleteMany({
-    where: {
-      id,
-      shop,
-    },
-  });
+  return groups;
 }
 
 /* =========================
-   PRODUCT GROUP ITEMS
+   VALIDATION
 ========================= */
 
 /**
- * Agregar un producto a un grupo
+ * Validación estilo validateQRCode
+ * No lanza errores, retorna un objeto o null
  */
-export async function addProductToGroup({
-  groupId,
-  handle,
-  title,
-}: {
-  groupId: string;
-  handle: string;
-  title: string;
-}) {
-  invariant(groupId, "Group ID is required");
-  invariant(handle, "Handle is required");
-  invariant(title, "Title is required");
+export function validateProductGroup(data: ProductGroupInput) {
+  const errors: Record<string, string> = {};
 
-  return db.productGroupItem.create({
-    data: {
-      groupId,
-      handle,
-      title,
-    },
+  if (!data.shop) {
+    errors.shop = "Shop is required";
+  }
+
+  if (!data.title) {
+    errors.title = "Title is required";
+  }
+
+  if (!data.products || data.products.length === 0) {
+    errors.products = "At least one product is required";
+  }
+
+  data.products?.forEach((product, index) => {
+    if (!product.handle) {
+      errors[`products.${index}.handle`] = "Product handle is required";
+    }
+
+    if (!product.title) {
+      errors[`products.${index}.title`] = "Product title is required";
+    }
   });
+
+  if (Object.keys(errors).length) {
+    return errors;
+  }
+
+  return null;
 }
 
-/**
- * Eliminar un producto de un grupo
- */
-export async function removeProductFromGroup(itemId: string) {
-  return db.productGroupItem.deleteMany({
-    where: {
-      id: itemId,
-    },
-  });
-}
+/* =========================
+   MUTATIONS
+========================= */
 
 /**
- * Obtener todos los productos de un grupo
+ * Crear un grupo con productos
+ * Retorna { errors } o { group }
  */
-export async function getGroupItems(groupId: string) {
-  return db.productGroupItem.findMany({
-    where: {
-      groupId,
-    },
-    orderBy: {
-      createdAt: "asc",
-    },
+export async function saveProductGroup(data: ProductGroupInput) {
+  const errors = validateProductGroup(data);
+
+  if (errors) {
+    return { 
+      success: false as const,
+      errors
+    };
+  }
+
+  return db.$transaction(async (tx) => {
+    const group = await tx.productGroup.create({
+      data: {
+        shop: data.shop,
+        title: data.title,
+      },
+    });
+
+    await tx.productGroupItem.createMany({
+      data: data.products.map((product) => ({
+        groupId: group.id,
+        handle: product.handle,
+        title: product.title,
+      })),
+    });
+
+    const fullGroup = await tx.productGroup.findUnique({
+      where: { id: group.id },
+      include: { products: true },
+    });
+
+    return {
+      sucess: true as const,
+      group: fullGroup
+    };
   });
 }
