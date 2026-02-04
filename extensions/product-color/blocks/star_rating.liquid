@@ -1,12 +1,33 @@
-{% assign avg_rating = block.settings.product.metafields.demo.avg_rating.value | round %}
-<span style="color:{{ block.settings.colour }}">
-  {% render 'stars', rating: avg_rating %}
-</span>
-{% if avg_rating >= 4 %}
-  <br>
-  <img src="{{ "thumbs-up.png" | asset_img_url: '15x' }}" height="15" width="15" loading="lazy">
-  {{ 'ratings.home.recommendationText' | t }}
-{% endif %}
+<script>
+  async function fetchProductGroups(shop, productHandle) {
+    try {
+      const url = `https://${shop}/apps/custom-product-groups?product_handle=${encodeURIComponent(productHandle)}`;
+
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch product groups");
+      }
+
+      const html = await response.text();
+
+      return html;
+    } catch (error) {
+      console.error("Product groups fetch error:", error);
+      return null;
+    }
+  }
+  fetchProductGroups(
+    "dev-tienda-prueba.myshopify.com",
+    "{{block.settings.product.handle}}"
+  ).then((html) => {
+    if (!html) return;
+
+    document.querySelector("#product-groups-container").innerHTML = html;
+  });
+
+</script>
+<div id="product-groups-container"></div>
 
 {% schema %}
 {
