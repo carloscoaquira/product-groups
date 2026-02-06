@@ -2,15 +2,13 @@
   async function fetchProductGroups(shop, productHandle) {
     try {
       const url = `https://${shop}/apps/custom-product-groups?product_handle=${encodeURIComponent(productHandle)}`;
-
-      const response = await fetch(url);
-
+      const response = await fetch(url, {
+        credentials: "same-origin",
+      });
       if (!response.ok) {
         throw new Error("Failed to fetch product groups");
       }
-
       const html = await response.text();
-
       return html;
     } catch (error) {
       console.error("Product groups fetch error:", error);
@@ -18,25 +16,31 @@
     }
   }
   fetchProductGroups(
-    "dev-tienda-prueba.myshopify.com",
-    "{{block.settings.product.handle}}"
+    "{{ shop.permanent_domain }}",
+    "{{ block.settings.product.handle }}"
   ).then((html) => {
     if (!html) return;
 
-    document.querySelector("#product-groups-container").innerHTML = html;
-  });
+    const container = document.querySelector("#product-groups-container");
+    if (!container) return;
 
+    container.innerHTML = html;
+  });
 </script>
+
 <div id="product-groups-container"></div>
 
 {% schema %}
 {
-  "name": "Star Rating",
+  "name": "Productos relacionados",
   "target": "section",
   "settings": [
-    { "type": "product", "id": "product", "label": "product", "autofill": true },
-    { "type": "color", "id": "colour", "label": "Star Colour", "default": "#ff0000" }
+    {
+      "type": "product",
+      "id": "product",
+      "label": "Producto",
+      "autofill": true
+    }
   ]
 }
 {% endschema %}
-

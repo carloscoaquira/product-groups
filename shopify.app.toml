@@ -2,7 +2,7 @@
 
 client_id = "0e8430fa4d2a5c10665fb9600a83d62d"
 name = "product-groups"
-application_url = "https://example.com"
+application_url = "https://product-groups-beca.fly.dev"
 embedded = true
 
 [build]
@@ -24,9 +24,13 @@ api_version = "2026-04"
 scopes = "read_products,write_products,write_app_proxy"
 
 [auth]
-redirect_urls = [ "https://example.com/api/auth" ]
+redirect_urls = [
+  "https://product-groups-beca.fly.dev/auth/callback",
+  "https://product-groups-beca.fly.dev/auth/shopify/callback",
+  "https://product-groups-beca.fly.dev/api/auth/callback"
+]
 
 [app_proxy]
-url = "https://product-groups-7.fly.dev/apps/product-groups"
+url = "https://product-groups-beca.fly.dev/apps/product-groups"
 prefix = "apps"
 subpath = "custom-product-groups"
